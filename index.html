@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Supabase JS Client CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SheetJS (XLSX) CDN untuk fitur Download Report Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
@@ -77,12 +79,26 @@
                                 🏢
                             </div>
                             <div>
-                                <span class="text-xs font-semibold tracking-wider text-blue-600 uppercase">Assessment Center</span>
+                                <span class="text-xs font-semibold tracking-wider text-blue-600 uppercase">Platform Rekrutmen Korporat</span>
                                 <h1 class="text-xl sm:text-2xl font-bold text-slate-900">Clerical Assessment (Sama / Beda)</h1>
                             </div>
                         </div>
-                        <p class="text-sm text-slate-600 leading-relaxed">
-                            Uji kecepatan dan ketelitian visual data. Tentukan apakah <span class="text-slate-900 font-semibold">Kolom 1</span> dan <span class="text-slate-900 font-semibold">Kolom 2</span> bernilai <span class="text-emerald-700 font-bold">SAMA</span> atau <span class="text-amber-700 font-bold">BEDA</span>.
+                        <p class="text-sm text-slate-600 leading-relaxed font-normal">
+                            Evaluasi ini dirancang untuk mengukur tingkat ketelitian, kecermatan, serta kecepatan proses kognitif dalam mengidentifikasi kesamaan dan perbedaan data secara visual. Silakan cermati instruksi pengujian di bawah ini sebelum memulai.
+                        </p>
+                    </div>
+
+                    <!-- Instruksi Profesional yang Komprehensif -->
+                    <div class="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 space-y-2">
+                        <span class="font-bold uppercase tracking-wider text-slate-900 block mb-1">Panduan & Instruksi Pengerjaan:</span>
+                        <p class="leading-relaxed">
+                            1. Periksa secara teliti data pada <strong class="text-slate-900">Kolom 1 (Referensi)</strong> dan <strong class="text-slate-900">Kolom 2 (Pembanding)</strong>.
+                        </p>
+                        <p class="leading-relaxed">
+                            2. Tentukan apakah kedua kolom tersebut bernilai <strong class="text-emerald-700 font-bold">SAMA</strong> secara identik (termasuk huruf besar/kecil, spasi, angka, dan tanda baca) atau <strong class="text-amber-700 font-bold">BEDA</strong>.
+                        </p>
+                        <p class="leading-relaxed">
+                            3. Pilih tombol <span class="font-semibold text-blue-700">SAMA</span> atau <span class="font-semibold text-amber-700">BEDA</span> pada lembar kerja yang tersedia secara cepat dan akurat.
                         </p>
                     </div>
 
@@ -401,7 +417,7 @@
         }
 
         // ==========================================
-        // 4. DASHBOARD REKRUTER & ADMIN (DENGAN INTERPRETASI LENGKAP)
+        // 4. DASHBOARD REKRUTER & ADMIN (DENGAN DOWNLOAD REPORT & INTERPRETASI LENGKAP)
         // ==========================================
         async function fetchDashboardData() {
             const { data, error } = await supabaseClient
@@ -506,9 +522,12 @@
                                                     <div class="inline-block px-2.5 py-0.5 rounded text-xs font-bold border mb-1 ${badgeColor}">${tier}</div>
                                                     <p class="text-xs text-slate-600 leading-relaxed">${interpText}</p>
                                                 </td>
-                                                <td class="px-6 py-4 text-center">
-                                                    <button data-id="${c.id}" class="btn-detail bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold px-3 py-1.5 rounded-lg text-xs transition">
+                                                <td class="px-6 py-4 text-center space-x-1">
+                                                    <button data-id="${c.id}" class="btn-detail bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold px-3 py-1.5 rounded-lg text-xs transition inline-block mb-1">
                                                         Detail Jawaban
+                                                    </button>
+                                                    <button data-id="${c.id}" class="btn-download bg-slate-900 hover:bg-slate-800 text-white font-semibold px-3 py-1.5 rounded-lg text-xs transition inline-block">
+                                                        Download Report
                                                     </button>
                                                 </td>
                                             </tr>
@@ -543,7 +562,78 @@
                 });
             });
 
+            // Handler tombol Download Report per orang
+            container.querySelectorAll('.btn-download').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const candidateId = e.target.getAttribute('data-id');
+                    const candidate = appState.candidatesList.find(item => item.id === candidateId);
+                    if (!candidate) return;
+
+                    const { data: subs } = await supabaseClient
+                        .from('clerical_submissions')
+                        .select('*, clerical_questions(*)')
+                        .eq('candidate_id', candidateId);
+
+                    generateCandidateReportExcel(candidate, subs || []);
+                });
+            });
+
             return container;
+        }
+
+        // Fungsi Helper untuk generate dan download report Excel per kandidat
+        function generateCandidateReportExcel(candidate, submissions) {
+            const score = Number(candidate.accuracy_score || 0);
+            let tier = "Rendah (Poor)";
+            let interpText = "Kurang memiliki ketelitian visual dan mudah terkecoh pada perbedaan karakter kecil. Tidak direkomendasikan untuk posisi yang menuntut akurasi data yang tinggi.";
+
+            if (score >= 90) {
+                tier = "Sangat Tinggi (Excellent)";
+                interpText = "Kandidat memiliki konsentrasi, ketelitian visual, dan mata jeli yang luar biasa terhadap detail kecil (angka/huruf). Sangat direkomendasikan untuk posisi administratif tingkat lanjut, Data Entry, Keuangan/Akuntansi, atau Auditor.";
+            } else if (score >= 80) {
+                tier = "Tinggi (Good)";
+                interpText = "Kandidat cukup teliti dan mampu bekerja di bawah tekanan waktu dengan baik, meski ada sedikit kesalahan minor. Direkomendasikan untuk posisi operasional, Customer Service, atau staf umum.";
+            } else if (score >= 70) {
+                tier = "Sedang (Moderate)";
+                interpText = "Tingkat ketelitian kurang konsisten. Kandidat berisiko tinggi melakukan kesalahan input data jika bekerja dalam volume besar atau tempo cepat. Perlu pelatihan tambahan jika diterima.";
+            }
+
+            // Sheet 1: Ringkasan & Interpretasi
+            const summaryData = [
+                ["LAPORAN HASIL CLERICAL ASSESSMENT"],
+                [""],
+                ["Nama Kandidat", candidate.full_name],
+                ["Email", candidate.email],
+                ["ID Sesi", candidate.participant_id],
+                ["Posisi Dilamar", candidate.position],
+                ["Waktu Pengerjaan", candidate.total_time_seconds + " Detik"],
+                ["Skor Akurasi", score + "%"],
+                ["Tingkat Ketelitian", tier],
+                ["Interpretasi & Rekomendasi", interpText],
+                ["Status Pengerjaan", candidate.status],
+                ["Tanggal Tes", new Date(candidate.started_at).toLocaleString('id-ID')]
+            ];
+
+            // Sheet 2: Detail Jawaban Per Soal
+            const detailRows = submissions.map((sub, index) => ({
+                "No": index + 1,
+                "Kategori": sub.clerical_questions?.category || '-',
+                "Kolom 1 (Referensi)": sub.clerical_questions?.reference_text || '-',
+                "Kolom 2 (Pembanding)": sub.clerical_questions?.expected_input_text || '-',
+                "Pilihan Kandidat": sub.submitted_value || '-',
+                "Status Evaluasi": sub.is_correct ? 'BENAR' : 'SALAH'
+            }));
+
+            const wb = XLSX.utils.book_new();
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+
+            XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan & Interpretasi");
+            XLSX.utils.book_append_sheet(wb, wsDetail, "Rincian Jawaban Soal");
+
+            // Simpan file Excel
+            const filename = `Report_Clerical_${candidate.full_name.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
+            XLSX.writeFile(wb, filename);
         }
 
         function renderDetailModal() {
@@ -593,7 +683,10 @@
                         </table>
                     </div>
 
-                    <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 text-right">
+                    <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                        <button id="btn-download-modal" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-xs transition shadow-sm">
+                            Download Report Excel
+                        </button>
                         <button id="btn-close-modal-bottom" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-5 py-2 rounded-lg text-xs transition border border-slate-700">Tutup Panel</button>
                     </div>
                 </div>
@@ -603,6 +696,11 @@
 
             modal.querySelector('#close-modal').addEventListener('click', () => modal.remove());
             modal.querySelector('#btn-close-modal-bottom').addEventListener('click', () => modal.remove());
+            modal.querySelector('#btn-download-modal').addEventListener('click', () => {
+                generateCandidateReportExcel(appState.selectedDetailCandidate, appState.detailSubmissions);
+            });
+
+            return container;
         }
 
         window.addEventListener('DOMContentLoaded', render);
