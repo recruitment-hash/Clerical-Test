@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clerical Test — Ketelitian &amp; Kecepatan Validasi Data</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  .font-mono-data { font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, Menlo, monospace; }
+  .view { display:none; }
+  .view.active { display:block; }
+
+  /* Candidate test view */
+  #timer-bar { transition: background-color .3s ease, color .3s ease; }
+  #timer-bar.timer-warning { animation: pulse-red 1s infinite; }
+  @keyframes pulse-red { 0%,100% { background-color:#dc2626; } 50% { background-color:#b91c1c; } }
+  .question-row:nth-child(even) { background-color:#f8fafc; }
+  .question-row input:focus { outline:2px solid #2563eb; outline-offset:-1px; }
+  .question-row.answered { background-color:#eff6ff; }
+  @media (prefers-reduced-motion: reduce) { #timer-bar.timer-warning { animation:none; } }
+
+  /* Recruiter dashboard */
+  th.sortable { cursor:pointer; user-select:none; }
+  th.sortable:hover { color:#0f172a; }
+  .sort-arrow { opacity:.35; font-size:10px; margin-left:2px; }
+  .sort-arrow.active { opacity:1; }
+  tr.detail-row { cursor:pointer; }
+  tr.detail-row:hover { background-color:#eff6ff; }
+  .badge-pass { background:#d1fae5; color:#047857; }
+  .badge-fail { background:#fee2e2; color:#b91c1c; }
+  .badge-progress { background:#e0e7ff; color:#4338ca; }
+  #answer-detail-body tr.wrong { background-color:#fef2f2; }
+  #answer-detail-body tr.correct { background-color:#f0fdf4; }
+
+  /* Print-friendly report */
+  @media print {
+    body { background:#fff !important; }
+    .no-print { display:none !important; }
+    #view-dashboard { display:block !important; }
+    #report-table { font-size:11px; }
+    .print-only-title { display:block !important; }
+  }
+  .print-only-title { display:none; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<!-- =====================================================================
+     VIEW — REGISTRASI (kandidat)
+===================================================================== -->
+<section id="view-register" class="view min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+    <div class="mb-6 text-center">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 text-white font-bold text-lg mb-3">CT</div>
+      <h1 class="text-2xl font-semibold text-slate-900">Clerical Test</h1>
+      <p class="text-slate-500 text-sm mt-1">Tes Ketelitian &amp; Kecepatan Validasi Data Administrasi</p>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-sm text-amber-800">
+      <p class="font-medium">Sebelum memulai:</p>
+      <ul class="list-disc list-inside mt-1 space-y-0.5">
+        <li>Tes terdiri dari <strong>74 soal</strong> perbandingan data.</li>
+        <li>Waktu pengerjaan <strong>5 menit (300 detik)</strong>, berjalan otomatis begitu Anda menekan "Mulai Tes".</li>
+        <li>Saat waktu habis, jawaban yang sudah terisi akan <strong>otomatis dikirim</strong>.</li>
+        <li>Pastikan koneksi internet stabil sebelum memulai.</li>
+      </ul>
+    </div>
+
+    <form id="registration-form" class="space-y-4">
+      <div>
+        <label for="full_name" class="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
+        <input id="full_name" name="full_name" type="text" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Contoh: Yandi Suharto">
+      </div>
+      <div>
+        <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+        <input id="email" name="email" type="email" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="nama@email.com">
+      </div>
+      <div>
+        <label for="participant_id" class="block text-sm font-medium text-slate-700 mb-1">Nomor Peserta / NIK</label>
+        <input id="participant_id" name="participant_id" type="text" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Contoh: 3201xxxxxxxxxxxx">
+      </div>
+      <div>
+        <label for="position" class="block text-sm font-medium text-slate-700 mb-1">Posisi yang Dilamar</label>
+        <input id="position" name="position" type="text" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Contoh: Staff Administrasi">
+      </div>
+
+      <p id="form-error" class="text-sm text-red-600 hidden"></p>
+
+      <button type="submit" id="start-btn"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg py-2.5 text-sm transition disabled:opacity-60 disabled:cursor-not-allowed">
+        Mulai Tes
+      </button>
+    </form>
+
+    <div class="text-center mt-6">
+      <a href="#recruiter" id="recruiter-login-link" class="text-xs text-slate-400 hover:text-slate-600 underline">Recruiter Login</a>
+    </div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     VIEW — LEMBAR KERJA TES (kandidat)
+===================================================================== -->
+<section id="view-test" class="view min-h-screen">
+  <header id="timer-bar" class="sticky top-0 z-20 bg-slate-900 text-white">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div>
+        <p class="text-xs text-slate-300 leading-none">Peserta</p>
+        <p id="candidate-name" class="text-sm font-medium leading-tight">—</p>
+      </div>
+      <div class="text-center">
+        <p class="text-xs text-slate-300 leading-none">Sisa Waktu</p>
+        <p id="timer-display" class="text-2xl font-bold font-mono-data leading-tight tabular-nums">05:00</p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-slate-300 leading-none">Terjawab</p>
+        <p id="progress-display" class="text-sm font-medium leading-tight">0 / 74</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    <div class="mb-4 bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-600">
+      Bandingkan <strong>Kolom Data 1 (Referensi)</strong> di sebelah kiri dengan data yang harus Anda ketik di
+      <strong>Kolom Data 2 (Input)</strong> di sebelah kanan. Ketik ulang data sesuai instruksi kolom pembanding
+      secepat dan seteliti mungkin.
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-slate-600 sticky top-[68px] z-10">
+          <tr>
+            <th class="px-3 py-2 text-left font-medium w-12">No</th>
+            <th class="px-3 py-2 text-left font-medium">Kolom Data 1 (Referensi)</th>
+            <th class="px-3 py-2 text-left font-medium">Kolom Data 2 (Input Anda)</th>
+          </tr>
+        </thead>
+        <tbody id="question-table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="sticky bottom-0 mt-6 pb-6 bg-slate-50 pt-4">
+      <button id="submit-btn"
+        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg py-3 text-sm transition disabled:opacity-60 disabled:cursor-not-allowed">
+        Submit Jawaban
+      </button>
+      <p id="submit-status" class="text-center text-xs text-slate-500 mt-2 hidden"></p>
+    </div>
+  </main>
+</section>
+
+<!-- =====================================================================
+     VIEW — KONFIRMASI SELESAI (kandidat, tanpa skor)
+===================================================================== -->
+<section id="view-result" class="view min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+    <div class="inline-flex items-center justify-center w-14 h-14 rounded-full mb-4 text-2xl font-bold bg-emerald-100 text-emerald-700">✓</div>
+    <h1 class="text-xl font-semibold text-slate-900">Tes Selesai</h1>
+    <p id="candidate-name-display" class="text-slate-500 text-sm mt-1">—</p>
+    <p class="text-slate-600 text-sm mt-4 leading-relaxed">
+      Terima kasih, jawaban Anda sudah kami terima dan tersimpan. Hasil tes tidak ditampilkan di
+      halaman ini — tim rekrutmen akan meninjau hasil Anda dan menghubungi Anda melalui email
+      untuk informasi selanjutnya.
+    </p>
+
+    <button id="restart-btn"
+      class="mt-6 block text-center w-full bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg py-2.5 text-sm transition">
+      Kembali ke Halaman Registrasi
+    </button>
+  </div>
+</section>
+
+<!-- =====================================================================
+     VIEW — PIN GATE (rekruter)
+===================================================================== -->
+<section id="view-pin" class="view min-h-screen flex items-center justify-center p-4 no-print">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-900 text-white font-bold text-lg mb-3">🔒</div>
+      <h1 class="text-xl font-semibold text-slate-900">Recruiter Dashboard</h1>
+      <p class="text-slate-500 text-sm mt-1">Masukkan PIN untuk mengakses laporan hasil tes</p>
+    </div>
+    <form id="pin-form" class="space-y-4">
+      <input id="pin-input" type="password" inputmode="numeric" maxlength="12" autocomplete="off"
+        class="w-full text-center tracking-[0.4em] text-lg rounded-lg border border-slate-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="••••••">
+      <p id="pin-error" class="text-sm text-red-600 text-center hidden">PIN salah. Coba lagi.</p>
+      <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg py-2.5 text-sm transition">
+        Masuk
+      </button>
+    </form>
+    <div class="text-center mt-6">
+      <a href="#" id="back-to-test-link" class="text-xs text-slate-400 hover:text-slate-600 underline">← Kembali ke halaman tes</a>
+    </div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     VIEW — DASHBOARD (rekruter)
+===================================================================== -->
+<section id="view-dashboard" class="view min-h-screen">
+  <header class="no-print sticky top-0 z-20 bg-white border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-lg font-semibold text-slate-900">Laporan Hasil Clerical Test</h1>
+        <p class="text-xs text-slate-500">Data langsung dari Supabase</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="refresh-btn" class="text-sm px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Muat Ulang</button>
+        <button id="export-csv-btn" class="text-sm px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Export CSV</button>
+        <button id="print-btn" class="text-sm px-3 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800">Cetak / Simpan PDF</button>
+        <button id="lock-btn" class="text-sm px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Kunci</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <h2 class="print-only-title text-lg font-semibold text-slate-900 mb-4">Laporan Hasil Clerical Test</h2>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">Total Kandidat</p>
+        <p id="stat-total" class="text-2xl font-bold text-slate-900">—</p>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">Rata-rata Akurasi</p>
+        <p id="stat-avg-accuracy" class="text-2xl font-bold text-slate-900">—</p>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">Tingkat Kelulusan</p>
+        <p id="stat-pass-rate" class="text-2xl font-bold text-slate-900">—</p>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-1">Rata-rata Waktu</p>
+        <p id="stat-avg-time" class="text-2xl font-bold text-slate-900">—</p>
+      </div>
+    </div>
+
+    <div class="no-print flex flex-wrap items-center gap-2 mb-4">
+      <input id="search-input" type="text" placeholder="Cari nama / posisi / no. peserta..."
+        class="flex-1 min-w-[220px] rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <select id="status-filter" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="">Semua Status</option>
+        <option value="in_progress">Sedang Berjalan</option>
+        <option value="submitted">Submitted</option>
+        <option value="auto_submitted">Auto-Submit</option>
+      </select>
+      <select id="pass-filter" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="">Semua Hasil</option>
+        <option value="pass">Lulus</option>
+        <option value="fail">Tidak Lulus</option>
+      </select>
+      <label class="flex items-center gap-1.5 text-sm text-slate-600">
+        Ambang batas
+        <input id="threshold-input" type="number" min="0" max="100" value="80"
+          class="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm">%
+      </label>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-lg overflow-x-auto">
+      <table id="report-table" class="w-full text-sm">
+        <thead class="bg-slate-100 text-slate-600">
+          <tr>
+            <th class="sortable px-3 py-2 text-left font-medium" data-key="full_name">Nama <span class="sort-arrow">▲▼</span></th>
+            <th class="sortable px-3 py-2 text-left font-medium" data-key="position">Posisi <span class="sort-arrow">▲▼</span></th>
+            <th class="no-print px-3 py-2 text-left font-medium">No. Peserta</th>
+            <th class="no-print px-3 py-2 text-left font-medium">Email</th>
+            <th class="sortable px-3 py-2 text-left font-medium" data-key="started_at">Mulai <span class="sort-arrow">▲▼</span></th>
+            <th class="sortable px-3 py-2 text-right font-medium" data-key="total_time_seconds">Waktu <span class="sort-arrow">▲▼</span></th>
+            <th class="sortable px-3 py-2 text-right font-medium" data-key="accuracy_score">Akurasi <span class="sort-arrow">▲▼</span></th>
+            <th class="px-3 py-2 text-center font-medium">Hasil</th>
+            <th class="sortable px-3 py-2 text-left font-medium" data-key="status">Status <span class="sort-arrow">▲▼</span></th>
+          </tr>
+        </thead>
+        <tbody id="report-table-body"></tbody>
+      </table>
+    </div>
+    <p id="empty-state" class="text-center text-sm text-slate-500 py-10 hidden">Belum ada data kandidat.</p>
+  </main>
+</section>
+
+<!-- Detail modal (breakdown per soal) -->
+<div id="detail-modal" class="no-print fixed inset-0 bg-black/40 hidden items-center justify-center p-4 z-30">
+  <div class="bg-white rounded-2xl shadow-lg w-full max-w-3xl max-h-[85vh] flex flex-col">
+    <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div>
+        <h3 id="detail-name" class="font-semibold text-slate-900">—</h3>
+        <p id="detail-meta" class="text-xs text-slate-500 mt-0.5">—</p>
+      </div>
+      <button id="detail-close-btn" class="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+    </div>
+    <div class="overflow-y-auto px-5 py-4">
+      <table class="w-full text-sm">
+        <thead class="text-slate-500">
+          <tr>
+            <th class="text-left font-medium py-1 w-10">No</th>
+            <th class="text-left font-medium py-1">Referensi</th>
+            <th class="text-left font-medium py-1">Jawaban Benar</th>
+            <th class="text-left font-medium py-1">Jawaban Kandidat</th>
+            <th class="text-center font-medium py-1 w-10">✓/✕</th>
+          </tr>
+        </thead>
+        <tbody id="answer-detail-body" class="font-mono-data text-xs"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// 0. KONFIGURASI SUPABASE
+// =====================================================================
+const SUPABASE_URL = 'https://rgdfmtvvxhvtaeypawqz.supabase.co';[cite: 1]
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnZGZtdHZ2eGh2dGFleXBhd3F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MTUzNzEsImV4cCI6MjEwMDE5MTM3MX0.9fzXG46ayNo-AKQIactHIaMZMEBV-fXukZHW_sseyBE';[cite: 1]
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const TEST_DURATION_SECONDS = 300;   // 5 menit
+
+// PIN akses dashboard rekruter — ganti sebelum deploy.
+const DASHBOARD_PIN = '123456';
+
+// =====================================================================
+// 1. ROUTER SEDERHANA ANTAR VIEW (satu halaman, banyak "layar")
+// =====================================================================
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function route() {
+  if (window.location.hash === '#recruiter') {
+    if (sessionStorage.getItem('recruiter_unlocked') === 'true') {
+      showView('view-dashboard');
+      loadCandidates();
+    } else {
+      showView('view-pin');
+    }
+  } else if (session.candidateId && session.startedAtISO) {
+    showView('view-test');
+    loadTest();
+  } else {
+    showView('view-register');
+  }
+}
+
+// =====================================================================
+// 2. STATE SESI KANDIDAT (bertahan lintas refresh lewat sessionStorage)
+// =====================================================================
+let session = {
+  candidateId: sessionStorage.getItem('candidate_id') || null,
+  startedAtISO: sessionStorage.getItem('started_at') || null,
+  candidateName: sessionStorage.getItem('candidate_name') || '',
+};
+
+let questions = [];
+let timerInterval = null;
+let hasSubmitted = false;
+
+route();
+window.addEventListener('hashchange', route);
+
+document.getElementById('recruiter-login-link').addEventListener('click', () => {
+  window.location.hash = 'recruiter';
+});
+document.getElementById('back-to-test-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.location.hash = '';
+  route();
+});
+
+// =====================================================================
+// 3. VIEW — REGISTRASI (kandidat)
+// =====================================================================
+const form = document.getElementById('registration-form');
+const startBtn = document.getElementById('start-btn');
+const errorEl = document.getElementById('form-error');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorEl.classList.add('hidden');
+
+  const full_name = document.getElementById('full_name').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const participant_id = document.getElementById('participant_id').value.trim();
+  const position = document.getElementById('position').value.trim();
+
+  if (!full_name || !email || !participant_id || !position) {
+    showError('Semua kolom wajib diisi.');
+    return;
+  }
+
+  startBtn.disabled = true;
+  startBtn.textContent = 'Menyiapkan tes...';
+
+  const startedAt = new Date();
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('candidates')
+      .insert({
+        full_name, email, participant_id, position,
+        started_at: startedAt.toISOString(),
+        status: 'in_progress',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    session = {
+      candidateId: data.id,
+      startedAtISO: startedAt.toISOString(),
+      candidateName: full_name,
+    };
+    sessionStorage.setItem('candidate_id', session.candidateId);
+    sessionStorage.setItem('started_at', session.startedAtISO);
+    sessionStorage.setItem('candidate_name', full_name);
+
+    showView('view-test');
+    loadTest();
+  } catch (err) {
+    console.error('Failed to register candidate:', err);
+    showError('Gagal memulai tes. Periksa koneksi atau konfigurasi Supabase, lalu coba lagi.');
+    startBtn.disabled = false;
+    startBtn.textContent = 'Mulai Tes';
+  }
+});
+
+function showError(message) {
+  errorEl.textContent = message;
+  errorEl.classList.remove('hidden');
+}
+
+// =====================================================================
+// 4. VIEW — LEMBAR KERJA TES (kandidat)
+// =====================================================================
+const tableBody = document.getElementById('question-table-body');
+const timerDisplay = document.getElementById('timer-display');
+const timerBar = document.getElementById('timer-bar');
+const progressDisplay = document.getElementById('progress-display');
+const submitBtn = document.getElementById('submit-btn');
+const submitStatus = document.getElementById('submit-status');
+
+document.getElementById('candidate-name').textContent = session.candidateName;
+
+async function loadTest() {
+  hasSubmitted = false;
+  document.getElementById('candidate-name').textContent = session.candidateName;
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Submit Jawaban';
+  submitStatus.classList.add('hidden');
+  timerBar.classList.remove('timer-warning');
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('clerical_questions')
+      .select('id, question_number, category, reference_text, expected_input_text')
+      .order('question_number', { ascending: true });
+
+    if (error) throw error;
+    questions = data;
+    renderQuestions(questions);
+    startTimer();
+  } catch (err) {
+    console.error('Failed to load questions:', err);
+    tableBody.innerHTML = `<tr><td colspan="3" class="px-3 py-6 text-center text-red-600 text-sm">
+      Gagal memuat soal tes. Periksa konfigurasi Supabase lalu muat ulang halaman.
+    </td></tr>`;
+  }
+}
+
+function renderQuestions(list) {
+  tableBody.innerHTML = list.map((q) => `
+    <tr class="question-row border-t border-slate-100" data-question-id="${q.id}">
+      <td class="px-3 py-2 align-middle text-slate-400 font-mono-data">${q.question_number}</td>
+      <td class="px-3 py-2 align-middle font-mono-data text-slate-800">${escapeHtml(q.reference_text)}</td>
+      <td class="px-2 py-1.5 align-middle">
+        <input type="text" class="answer-input w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm font-mono-data focus:ring-2 focus:ring-blue-500"
+          data-question-id="${q.id}" autocomplete="off" spellcheck="false">
+      </td>
+    </tr>
+  `).join('');
+
+  tableBody.querySelectorAll('.answer-input').forEach((input) => {
+    input.addEventListener('input', () => {
+      input.closest('.question-row').classList.toggle('answered', input.value.trim().length > 0);
+      updateProgress();
+    });
+  });
+  updateProgress();
+}
+
+function updateProgress() {
+  const total = questions.length;
+  const answered = Array.from(tableBody.querySelectorAll('.answer-input'))
+    .filter(i => i.value.trim().length > 0).length;
+  progressDisplay.textContent = `${answered} / ${total}`;
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  const startedAt = new Date(session.startedAtISO).getTime();
+  const deadline = startedAt + TEST_DURATION_SECONDS * 1000;
+
+  const tick = () => {
+    const remainingMs = deadline - Date.now();
+    const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+    renderCountdown(remainingSec);
+
+    if (remainingSec <= 60) timerBar.classList.add('timer-warning');
+
+    if (remainingSec <= 0) {
+      clearInterval(timerInterval);
+      submitTest('auto_submitted');
+    }
+  };
+  tick();
+  timerInterval = setInterval(tick, 1000);
+}
+
+function renderCountdown(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const s = (totalSeconds % 60).toString().padStart(2, '0');
+  timerDisplay.textContent = `${m}:${s}`;
+}
+
+submitBtn.addEventListener('click', () => submitTest('submitted'));
+
+async function submitTest(status) {
+  if (hasSubmitted) return;
+  hasSubmitted = true;
+
+  clearInterval(timerInterval);
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Mengirim jawaban...';
+  tableBody.querySelectorAll('.answer-input').forEach((i) => (i.disabled = true));
+
+  const submittedAt = new Date();
+  const startedAt = new Date(session.startedAtISO);
+  const totalTimeSeconds = Math.min(
+    TEST_DURATION_SECONDS,
+    Math.round((submittedAt.getTime() - startedAt.getTime()) / 1000)
+  );
+
+  const answerMap = {};
+  tableBody.querySelectorAll('.answer-input').forEach((input) => {
+    answerMap[input.dataset.questionId] = input.value.trim();
+  });
+
+  let correctCount = 0;
+  const submissions = questions.map((q) => {
+    const submittedValue = answerMap[q.id] || '';
+    const isCorrect = submittedValue === q.expected_input_text;
+    if (isCorrect) correctCount += 1;
+    return {
+      candidate_id: session.candidateId,
+      question_id: q.id,
+      submitted_value: submittedValue,
+      is_correct: isCorrect,
+    };
+  });
+
+  const accuracyScore = questions.length
+    ? Math.round((correctCount / questions.length) * 10000) / 100
+    : 0;
+
+  try {
+    const { error: subError } = await supabaseClient
+      .from('clerical_submissions')
+      .upsert(submissions, { onConflict: 'candidate_id,question_id' });
+    if (subError) throw subError;
+
+    const { error: candError } = await supabaseClient
+      .from('candidates')
+      .update({
+        submitted_at: submittedAt.toISOString(),
+        total_time_seconds: totalTimeSeconds,
+        accuracy_score: accuracyScore,
+        status,
+      })
+      .eq('id', session.candidateId);
+    if (candError) throw candError;
+
+    renderResult({ full_name: session.candidateName });
+
+    sessionStorage.removeItem('candidate_id');
+    sessionStorage.removeItem('started_at');
+    showView('view-result');
+  } catch (err) {
+    console.error('Failed to submit test:', err);
+    submitStatus.textContent = 'Gagal mengirim jawaban. Periksa koneksi, lalu coba tekan Submit lagi.';
+    submitStatus.classList.remove('hidden');
+    hasSubmitted = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit Jawaban';
+    tableBody.querySelectorAll('.answer-input').forEach((i) => (i.disabled = false));
+  }
+}
+
+// =====================================================================
+// 5. VIEW — KONFIRMASI SELESAI
+// =====================================================================
+function renderResult(result) {
+  document.getElementById('candidate-name-display').textContent = result.full_name || '—';
+}
+
+document.getElementById('restart-btn').addEventListener('click', () => {
+  sessionStorage.removeItem('candidate_id');
+  sessionStorage.removeItem('started_at');
+  sessionStorage.removeItem('candidate_name');
+  session = { candidateId: null, startedAtISO: null, candidateName: '' };
+  form.reset();
+  startBtn.disabled = false;
+  startBtn.textContent = 'Mulai Tes';
+  window.location.hash = '';
+  showView('view-register');
+});
+
+// =====================================================================
+// 6. VIEW — PIN GATE (rekruter)
+// =====================================================================
+document.getElementById('pin-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const pin = document.getElementById('pin-input').value.trim();
+  const pinErrorEl = document.getElementById('pin-error');
+
+  if (pin === DASHBOARD_PIN) {
+    sessionStorage.setItem('recruiter_unlocked', 'true');
+    pinErrorEl.classList.add('hidden');
+    document.getElementById('pin-input').value = '';
+    showView('view-dashboard');
+    loadCandidates();
+  } else {
+    pinErrorEl.classList.remove('hidden');
+    document.getElementById('pin-input').value = '';
+  }
+});
+
+document.getElementById('lock-btn').addEventListener('click', () => {
+  sessionStorage.removeItem('recruiter_unlocked');
+  showView('view-pin');
+});
+
+// =====================================================================
+// 7. VIEW — DASHBOARD (rekruter)
+// =====================================================================
+let allCandidates = [];
+let sortKey = 'started_at';
+let sortDir = 'desc';
+
+async function loadCandidates() {
+  const tbody = document.getElementById('report-table-body');
+  tbody.innerHTML = `<tr><td colspan="9" class="px-3 py-6 text-center text-slate-500 text-sm">Memuat data...</td></tr>`;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('candidates')
+      .select('*')
+      .order('started_at', { ascending: false });
+
+    if (error) throw error;
+    allCandidates = data || [];
+    renderStats();
+    applyFiltersAndRender();
+  } catch (err) {
+    console.error('Failed to load candidates:', err);
+    tbody.innerHTML = `<tr><td colspan="9" class="px-3 py-6 text-center text-red-600 text-sm">
+      Gagal memuat data. Periksa konfigurasi Supabase.
+    </td></tr>`;
+  }
+}
+
+document.getElementById('refresh-btn').addEventListener('click', loadCandidates);
+
+function renderStats() {
+  const threshold = getThreshold();
+  const total = allCandidates.length;
+  const graded = allCandidates.filter(c => c.accuracy_score !== null && c.accuracy_score !== undefined);
+  const avgAccuracy = graded.length
+    ? graded.reduce((s, c) => s + Number(c.accuracy_score), 0) / graded.length
+    : 0;
+  const passCount = graded.filter(c => Number(c.accuracy_score) >= threshold).length;
+  const passRate = graded.length ? (passCount / graded.length) * 100 : 0;
+  const timed = allCandidates.filter(c => c.total_time_seconds !== null && c.total_time_seconds !== undefined);
+  const avgTime = timed.length
+    ? timed.reduce((s, c) => s + Number(c.total_time_seconds), 0) / timed.length
+    : 0;
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-avg-accuracy').textContent = graded.length ? `${avgAccuracy.toFixed(1)}%` : '—';
+  document.getElementById('stat-pass-rate').textContent = graded.length ? `${passRate.toFixed(1)}%` : '—';
+  document.getElementById('stat-avg-time').textContent = timed.length ? formatDuration(avgTime) : '—';
+}
+
+function getThreshold() {
+  return Number(document.getElementById('threshold-input').value || 80);
+}
+
+document.getElementById('search-input').addEventListener('input', applyFiltersAndRender);
+document.getElementById('status-filter').addEventListener('change', applyFiltersAndRender);
+document.getElementById('pass-filter').addEventListener('change', applyFiltersAndRender);
+document.getElementById('threshold-input').addEventListener('input', () => { renderStats(); applyFiltersAndRender(); });
+
+document.querySelectorAll('th.sortable').forEach((th) => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if (sortKey === key) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortKey = key;
+      sortDir = 'asc';
+    }
+    applyFiltersAndRender();
+  });
+});
+
+function applyFiltersAndRender() {
+  const search = document.getElementById('search-input').value.trim().toLowerCase();
+  const statusFilter = document.getElementById('status-filter').value;
+  const passFilter = document.getElementById('pass-filter').value;
+  const threshold = getThreshold();
+
+  let rows = allCandidates.filter((c) => {
+    const matchesSearch = !search || [c.full_name, c.position, c.participant_id, c.email]
+      .some(v => (v || '').toLowerCase().includes(search));
+    const matchesStatus = !statusFilter || c.status === statusFilter;
+    const hasScore = c.accuracy_score !== null && c.accuracy_score !== undefined;
+    const passed = hasScore && Number(c.accuracy_score) >= threshold;
+    const matchesPass = !passFilter || (passFilter === 'pass' ? passed : (hasScore && !passed));
+    return matchesSearch && matchesStatus && matchesPass;
+  });
+
+  rows.sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (av === null || av === undefined) av = sortDir === 'asc' ? Infinity : -Infinity;
+    if (bv === null || bv === undefined) bv = sortDir === 'asc' ? Infinity : -Infinity;
+    if (typeof av === 'string') { av = av.toLowerCase(); bv = (bv || '').toLowerCase(); }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  renderTable(rows, threshold);
+}
+
+function renderTable(rows, threshold) {
+  const tbody = document.getElementById('report-table-body');
+  const emptyState = document.getElementById('empty-state');
+
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    emptyState.classList.remove('hidden');
+    return;
+  }
+  emptyState.classList.add('hidden');
+
+  tbody.innerHTML = rows.map((c) => {
+    const hasScore = c.accuracy_score !== null && c.accuracy_score !== undefined;
+    const passed = hasScore && Number(c.accuracy_score) >= threshold;
+    const resultBadge = !hasScore
+      ? `<span class="badge-progress text-xs font-medium px-2 py-0.5 rounded-full">Belum selesai</span>`
+      : passed
+        ? `<span class="badge-pass text-xs font-medium px-2 py-0.5 rounded-full">Lulus</span>`
+        : `<span class="badge-fail text-xs font-medium px-2 py-0.5 rounded-full">Tidak Lulus</span>`;
+    const statusLabel = { in_progress: 'Sedang Berjalan', submitted: 'Submitted', auto_submitted: 'Auto-Submit' }[c.status] || c.status;
+
+    return `
+      <tr class="detail-row border-t border-slate-100" data-candidate-id="${c.id}">
+        <td class="px-3 py-2">${escapeHtml(c.full_name)}</td>
+        <td class="px-3 py-2">${escapeHtml(c.position)}</td>
+        <td class="no-print px-3 py-2 font-mono-data text-xs">${escapeHtml(c.participant_id)}</td>
+        <td class="no-print px-3 py-2 text-xs">${escapeHtml(c.email)}</td>
+        <td class="px-3 py-2 text-xs">${c.started_at ? new Date(c.started_at).toLocaleString('id-ID') : '—'}</td>
+        <td class="px-3 py-2 text-right font-mono-data">${c.total_time_seconds != null ? formatDuration(c.total_time_seconds) : '—'}</td>
+        <td class="px-3 py-2 text-right font-mono-data">${hasScore ? Number(c.accuracy_score).toFixed(2) + '%' : '—'}</td>
+        <td class="px-3 py-2 text-center">${resultBadge}</td>
+        <td class="px-3 py-2 text-xs">${statusLabel}</td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('.detail-row').forEach((row) => {
+    row.addEventListener('click', () => openDetail(row.dataset.candidateId));
+  });
+}
+
+function formatDuration(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const s = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+// Detail modal — per-question breakdown for one candidate
+const detailModal = document.getElementById('detail-modal');
+
+async function openDetail(candidateId) {
+  const candidate = allCandidates.find(c => c.id === candidateId);
+  if (!candidate) return;
+
+  document.getElementById('detail-name').textContent = candidate.full_name;
+  document.getElementById('detail-meta').textContent =
+    `${candidate.position} · ${candidate.email} · Akurasi ${candidate.accuracy_score != null ? Number(candidate.accuracy_score).toFixed(2) + '%' : '—'}`;
+
+  const body = document.getElementById('answer-detail-body');
+  body.innerHTML = `<tr><td colspan="5" class="text-center text-slate-500 py-4">Memuat jawaban...</td></tr>`;
+  detailModal.classList.remove('hidden');
+  detailModal.classList.add('flex');
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('clerical_submissions')
+      .select('submitted_value, is_correct, clerical_questions(question_number, reference_text, expected_input_text)')
+      .eq('candidate_id', candidateId)
+      .order('question_id', { ascending: true });
+
+    if (error) throw error;
+
+    const rows = (data || []).sort((a, b) =>
+      (a.clerical_questions?.question_number || 0) - (b.clerical_questions?.question_number || 0)
+    );
+
+    body.innerHTML = rows.map((r) => {
+      const q = r.clerical_questions || {};
+      return `
+        <tr class="${r.is_correct ? 'correct' : 'wrong'}">
+          <td class="py-1 pr-2 text-slate-400">${q.question_number ?? '—'}</td>
+          <td class="py-1 pr-2">${escapeHtml(q.reference_text)}</td>
+          <td class="py-1 pr-2">${escapeHtml(q.expected_input_text)}</td>
+          <td class="py-1 pr-2">${escapeHtml(r.submitted_value)}</td>
+          <td class="py-1 text-center">${r.is_correct ? '✓' : '✕'}</td>
+        </tr>
+      `;
+    }).join('') || `<tr><td colspan="5" class="text-center text-slate-500 py-4">Belum ada jawaban tersimpan.</td></tr>`;
+  } catch (err) {
+    console.error('Failed to load answer detail:', err);
+    body.innerHTML = `<tr><td colspan="5" class="text-center text-red-600 py-4">Gagal memuat detail jawaban.</td></tr>`;
+  }
+}
+
+document.getElementById('detail-close-btn').addEventListener('click', closeDetail);
+detailModal.addEventListener('click', (e) => { if (e.target === detailModal) closeDetail(); });
+function closeDetail() {
+  detailModal.classList.add('hidden');
+  detailModal.classList.remove('flex');
+}
+
+// =====================================================================
+// 8. SAVE / EXPORT (rekruter)
+// =====================================================================
+document.getElementById('print-btn').addEventListener('click', () => window.print());
+
+document.getElementById('export-csv-btn').addEventListener('click', () => {
+  const threshold = getThreshold();
+  const header = ['Nama', 'Posisi', 'No Peserta', 'Email', 'Mulai', 'Selesai', 'Waktu (detik)', 'Akurasi (%)', 'Hasil', 'Status'];
+  const lines = [header.join(',')];
+
+  allCandidates.forEach((c) => {
+    const hasScore = c.accuracy_score !== null && c.accuracy_score !== undefined;
+    const passed = hasScore && Number(c.accuracy_score) >= threshold;
+    const result = !hasScore ? 'Belum selesai' : (passed ? 'Lulus' : 'Tidak Lulus');
+    const row = [
+      c.full_name, c.position, c.participant_id, c.email,
+      c.started_at ? new Date(c.started_at).toLocaleString('id-ID') : '',
+      c.submitted_at ? new Date(c.submitted_at).toLocaleString('id-ID') : '',
+      c.total_time_seconds ?? '',
+      hasScore ? Number(c.accuracy_score).toFixed(2) : '',
+      result,
+      c.status,
+    ].map(csvEscape).join(',');
+    lines.push(row);
+  });
+
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `laporan-clerical-test-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+function csvEscape(value) {
+  const str = String(value ?? '');
+  if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+</script>
+</body>
+</html>
